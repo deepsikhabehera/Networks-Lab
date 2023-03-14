@@ -6,7 +6,7 @@
 #include <signal.h>
 
 #define MAX_LEN 5000
-#define NUM_MEGS 100
+#define NUM_MEGS 10
 
 static pthread_t R, S;
 
@@ -14,19 +14,36 @@ typedef struct {
     int sockfd;
     char msgs[NUM_MEGS][MAX_LEN];
     int front, rear, count;
-} Send_Message;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+} Message_Table;
 
-typedef struct {
-    int sockfd;
-    char msgs[MAX_LEN];
-    int isempty;
-} Received_Message;
+Message_Table *send_msgs;
+Message_Table *recv_msgs;
 
-Send_Message *send_msgs;
-Received_Message *recv_msgs;
+void *thread_R(void *arg)
+{
+    Message_Table *recv_msgs = (Message_Table *) arg;
+    char message[MAX_LEN];
 
-void *thread_R(void *arg);
-void *thread_S(void *arg);
+    // Receive message from socket
+
+    // Add the message to the Received_Message table
+    pthread_mutex_lock(&recv_msgs->mutex);
+    while (recv_msgs->count == NUM_MSGS) {
+        pthread_cond_wait(&recv_msgs->cond, &recv_msgs->mutex);
+    }
+    strcpy(recv_msgs->msgs[recv_msgs->rear], message);
+    recv_msgs->rear = (recv_msgs->rear + 1) % NUM_MSGS;
+    recv_msgs->count++;
+    pthread_cond_signal(&recv_msgs->cond);
+    pthread_mutex_unlock(&recv_msgs->mutex);
+}
+
+void *thread_S(void *arg)
+{
+    Message_Table *send_msgs = (Message_Table *) arg;
+}
 
 int my_socket(int domain, int type, int protocol)
 {
@@ -43,14 +60,21 @@ int my_socket(int domain, int type, int protocol)
     }
 
     // Initialize send_msgs and recv_msgs
-    send_msgs = (Send_Message *) malloc(sizeof(Send_Message));
+    send_msgs = (Message_Table *) malloc(sizeof(Message_Table));
     send_msgs->sockfd = sockfd;
     send_msgs->front = 0;
     send_msgs->rear = 0;
+    send_msgs->count = 0;
+    pthread_mutex_init(&send_msgs->mutex, NULL);
+    pthread_cond_init(&send_msgs->cond, NULL);
 
-    recv_msgs = (Received_Message *) malloc(sizeof(Received_Message));
+    recv_msgs = (Message_Table *) malloc(sizeof(Message_Table));
     recv_msgs->sockfd = sockfd;
-    recv_msgs->isempty = 1;
+    recv_msgs->front = 0;
+    recv_msgs->rear = 0;
+    recv_msgs->count = 0;
+    pthread_mutex_init(&recv_msgs->mutex, NULL);
+    pthread_cond_init(&recv_msgs->cond, NULL);
 
     // Create threads R and S
     pthread_create(&R, NULL, thread_R, (void *) recv_msgs);
@@ -81,12 +105,18 @@ int my_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 
 int my_close(int sockfd)
 {
+    sleep(5);
+    
     // Terminate threads R and S
     pthread_kill(R, SIGTERM);
     pthread_kill(S, SIGTERM);
 
     // Clean up Send_Message and Received_Message tables
+    pthread_mutex_destroy(&send_msgs->mutex);
+    pthread_cond_destroy(&send_msgs->cond);
     free(send_msgs);
+    pthread_mutex_destroy(&recv_msgs->mutex);
+    pthread_cond_destroy(&recv_msgs->cond);
     free(recv_msgs);
 
     return close(sockfd);
@@ -111,14 +141,15 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags)
 ssize_t my_recv(int sockfd, void *buf, size_t len, int flags)
 {
     // Block if recv_msgs is empty
-    while(recv_msgs->isempty)
+    while(recv_msgs->count == 0)
     {
         sleep(5);
     }
 
     // Remove message from recv_msgs
-    strcpy(buf, recv_msgs->msgs);
-    recv_msgs->isempty = 1;
+    strcpy(buf, recv_msgs->msgs[recv_msgs->front]);
+    recv_msgs->front = (recv_msgs->front + 1) % NUM_MEGS;
+    recv_msgs->count--;
 
     return len;
 }
