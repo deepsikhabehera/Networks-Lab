@@ -3,11 +3,10 @@
 
 #define MAX_RECV_LEN 5000
 #define MAX_SEND_LEN 1000
-#define MAX_SEND_MSGS 100
 
 typedef struct {
     int sockfd;
-    char msgs[MAX_SEND_MSGS][MAX_SEND_LEN];
+    char msgs[MAX_SEND_LEN];
     int front, rear;
 } Send_Message;
 
@@ -79,5 +78,13 @@ int my_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 
 int my_close(int sockfd)
 {
+    // Terminate threads R and S
+    pthread_kill(thread_R, SIGTERM);
+    pthread_kill(thread_S, SIGTERM);
+
+    // Clean up Send_Message and Received_Message tables
+    free(send_msgs);
+    free(recv_msgs);
+
     return close(sockfd);
 }
