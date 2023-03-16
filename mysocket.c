@@ -7,11 +7,13 @@
 
 #define MAX_LEN 5000
 #define NUM_MSGS 10
-#define MAX_SEND_LEN 1000 
+#define MAX_SEND_LEN 1000
+#define T 5
 
 static pthread_t R, S;
 
-typedef struct {
+typedef struct
+{
     int sockfd;
     char msgs[NUM_MSGS][MAX_LEN];
     int front, rear, count;
@@ -24,64 +26,132 @@ Message_Table *recv_msgs = NULL;
 
 void *thread_R(void *arg)
 {
-    Message_Table *recv_msgs = (Message_Table *) arg;
-    char message[MAX_LEN]="";
+    Message_Table *recv_msgs = (Message_Table *)arg;
+    int sockfd = recv_msgs->sockfd;
     char buffer[MAX_SEND_LEN];
-    int bytes_read;
-    int count = 0;
-    //Receiving packets of 1000 bytes, exits if 5 packets are received at max
-    while((bytes_read = recv(recv_msgs->sockfd, buffer, MAX_SEND_LEN, 0))>0)
+    int bytes_received;
+    int message_len = 0;
+    char message[MAX_LEN];
+    int message_idx = 0;
+    for (int i = 0; i < MAX_SEND_LEN; i++)
+        buffer[i] = '\0';
+    for (int i = 0; i < MAX_LEN; i++)
+        message[i] = '\0';
+
+    while (1)
     {
-        strncat(message, buffer, bytes_read);
-        count++;
-        if(count==5)
+        // Receive data from the socket
+        while ((bytes_received = recv(sockfd, buffer, MAX_SEND_LEN, 0)) >= 0)
         {
-            break;
+            // Interpret the received data as messages
+            for (int i = 0; i < bytes_received; i++)
+            {
+                if (buffer[i] == '\0' || message_idx == MAX_LEN - 1 || bytes_received == 0)
+                {
+                    // End of message reached
+                    message[message_idx] = '\0';
+                    message_len = message_idx;
+                    message_idx = 0;
+
+                    // Add the message to the Received_Message table
+                    pthread_mutex_lock(&recv_msgs->mutex);
+                    while (recv_msgs->count == NUM_MSGS)
+                    {
+                        pthread_cond_wait(&recv_msgs->cond, &recv_msgs->mutex);
+                    }
+                    strcpy(recv_msgs->msgs[recv_msgs->rear], message);
+                    recv_msgs->rear = (recv_msgs->rear + 1) % NUM_MSGS;
+                    recv_msgs->count++;
+                    pthread_cond_signal(&recv_msgs->cond);
+                    pthread_mutex_unlock(&recv_msgs->mutex);
+
+                    // Reset the message buffer
+                    for (int i = 0; i < MAX_LEN; i++)
+                    {
+                        message[i] = '\0';
+                    }
+                    message_len = 0;
+                }
+                else
+                {
+                    // Add the character to the message buffer
+                    message[message_idx++] = buffer[i];
+                }
+            }
+            for (int i = 0; i < MAX_SEND_LEN; i++)
+                buffer[i] = '\0';
+        }
+        if (bytes_received < 0)
+        {
+            // Error occurred, exit the thread
+            pthread_exit(NULL);
         }
     }
-    // Add the message to the Received_Message table
-    pthread_mutex_lock(&recv_msgs->mutex);
-    while (recv_msgs->count == NUM_MSGS) {
-        pthread_cond_wait(&recv_msgs->cond, &recv_msgs->mutex);
-    }
-    strcpy(recv_msgs->msgs[recv_msgs->rear], message);
-    recv_msgs->rear = (recv_msgs->rear + 1) % NUM_MSGS;
-    recv_msgs->count++;
-    pthread_cond_signal(&recv_msgs->cond);
-    pthread_mutex_unlock(&recv_msgs->mutex);
+
+    // Socket closed, cleanup and exit the thread
+    close(sockfd);
+    pthread_exit(NULL);
 }
 
 void *thread_S(void *arg)
 {
-    Message_Table *send_msgs = (Message_Table *) arg;
-    char message[MAX_LEN];
+    Message_Table *send_msgs = (Message_Table *)arg;
+    int sockfd = send_msgs->sockfd;
+    char buffer[MAX_LEN];
+    int bytes_to_send;
     int bytes_sent;
-    // Remove message from the Send_Message table
-    pthread_mutex_lock(&send_msgs->mutex);
-    while (send_msgs->count == 0) {
-        pthread_cond_wait(&send_msgs->cond, &send_msgs->mutex);
-    }
-    strcpy(message, send_msgs->msgs[send_msgs->front]);
-    send_msgs->front = (send_msgs->front + 1) % NUM_MSGS;
-    send_msgs->count--;
-    pthread_cond_signal(&send_msgs->cond);
-    pthread_mutex_unlock(&send_msgs->mutex);
+    for (int i = 0; i < MAX_LEN; i++)
+        buffer[i] = '\0';
 
-    // Send the message in packets of 1000 bytes
-    for(int i=0; i<strlen(message); i+=MAX_SEND_LEN)
+    while (1)
     {
-        if(message[i]=="\0" || message[i]==NULL || i>=strlen(message) || i>=MAX_LEN)
+        // Sleep for some time T
+        sleep(T);
+
+        // Check if any message is waiting to be sent
+        pthread_mutex_lock(&send_msgs->mutex);
+        if (send_msgs->count > 0)
         {
-            break;
+            // Get the next message to send
+            strcpy(buffer, send_msgs->msgs[send_msgs->front]);
+            send_msgs->front = (send_msgs->front + 1) % NUM_MSGS;
+            send_msgs->count--;
+            pthread_mutex_unlock(&send_msgs->mutex);
+
+            // Send the message in chunks of at most 1000 bytes
+            int total_bytes_sent = 0;
+            int send_rounds = 0;
+            bytes_to_send = strlen(buffer);
+            while (bytes_to_send > 0)
+            {
+                bytes_sent = send(sockfd, buffer + total_bytes_sent, min(bytes_to_send, 1000), 0);
+                if (bytes_sent < 0)
+                {
+                    // Error occurred, exit the thread
+                    pthread_exit(NULL);
+                }
+                send_rounds++;
+                if (send_rounds == 5 || bytes_sent == 0 || buffer[total_bytes_sent + bytes_sent - 1] == '\0')
+                {
+
+                    for (int i = 0; i < MAX_LEN; i++)
+                        buffer[i] = '\0';
+                    break;
+                }
+                bytes_to_send -= bytes_sent;
+                total_bytes_sent += bytes_sent;
+            }
         }
-        bytes_sent = send(send_msgs->sockfd, message+i, MAX_SEND_LEN, 0);
-        i+=MAX_SEND_LEN;
+        else
+        {
+            pthread_mutex_unlock(&send_msgs->mutex);
+        }
     }
 }
 
 int my_socket(int domain, int type, int protocol)
 {
-    if(type != SOCK_MyTCP)
+    if (type != SOCK_MyTCP)
     {
         perror("Error: Only SOCK_MyTCP is supported.");
     }
@@ -94,7 +164,7 @@ int my_socket(int domain, int type, int protocol)
     }
 
     // Initialize send_msgs and recv_msgs
-    send_msgs = (Message_Table *) malloc(sizeof(Message_Table));
+    send_msgs = (Message_Table *)malloc(sizeof(Message_Table));
     send_msgs->sockfd = sockfd;
     send_msgs->front = 0;
     send_msgs->rear = 0;
@@ -102,7 +172,7 @@ int my_socket(int domain, int type, int protocol)
     pthread_mutex_init(&send_msgs->mutex, NULL);
     pthread_cond_init(&send_msgs->cond, NULL);
 
-    recv_msgs = (Message_Table *) malloc(sizeof(Message_Table));
+    recv_msgs = (Message_Table *)malloc(sizeof(Message_Table));
     recv_msgs->sockfd = sockfd;
     recv_msgs->front = 0;
     recv_msgs->rear = 0;
@@ -111,8 +181,8 @@ int my_socket(int domain, int type, int protocol)
     pthread_cond_init(&recv_msgs->cond, NULL);
 
     // Create threads R and S
-    pthread_create(&R, NULL, thread_R, (void *) recv_msgs);
-    pthread_create(&S, NULL, thread_S, (void *) send_msgs);
+    pthread_create(&R, NULL, thread_R, (void *)recv_msgs);
+    pthread_create(&S, NULL, thread_S, (void *)send_msgs);
 
     return sockfd;
 }
@@ -140,7 +210,7 @@ int my_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 int my_close(int sockfd)
 {
     sleep(5);
-    if(send_msgs==NULL || recv_msgs==NULL)
+    if (send_msgs == NULL || recv_msgs == NULL)
     {
         perror("Error: Socket hasn't been initialized.");
     }
@@ -165,7 +235,7 @@ int my_close(int sockfd)
 ssize_t my_send(int sockfd, const void *buf, size_t len, int flags)
 {
     // Block if send_msgs is full
-    while(send_msgs->count == NUM_MSGS)
+    while (send_msgs->count == NUM_MSGS)
     {
         sleep(5);
     }
@@ -181,7 +251,7 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags)
 ssize_t my_recv(int sockfd, void *buf, size_t len, int flags)
 {
     // Block if recv_msgs is empty
-    while(recv_msgs->count == 0)
+    while (recv_msgs->count == 0)
     {
         sleep(5);
     }
