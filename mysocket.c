@@ -11,6 +11,12 @@
 #define MAX_SEND_LEN 1000
 #define T 5
 
+/*RUN:
+make
+gcc -o clie time_client.c mysocket.o
+gcc -o serv time_server.c mysocket.o
+*/
+
 static pthread_t R, S;
 
 typedef struct
