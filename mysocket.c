@@ -63,7 +63,7 @@ void *thread_R(void *arg)
             buffer[bytes_received] = '\0';
         }
         bytes_received++;
-        for (int i = 0; i < bytes_received; i++)
+        for (int i = 0; i < bytes_received - 1; i++)
         {
             if (buffer[i] == '\0' || message_idx == MAX_LEN - 1 || bytes_received == 0)
             {
@@ -108,7 +108,7 @@ void *thread_S(void *arg)
     Message_Table *send_msgs = (Message_Table *)arg;
     int sockfd = send_msgs->sockfd;
     char buffer[MAX_LEN];
-    char buf[MAX_SEND_LEN];
+    char buf[MAX_SEND_LEN + 1];
     int bytes_to_send;
     int bytes_sent;
     printf("Thread S started!\n");
@@ -141,10 +141,11 @@ void *thread_S(void *arg)
             {
                 int x = MAX_SEND_LEN;
                 if (bytes_to_send < MAX_SEND_LEN)
-                    x = bytes_to_send;
-                strncpy(buf, buffer + total_bytes_sent, x);
-                //??????????????????
-                // printf("sockfd: %d\n", sockfd);
+                    x = bytes_to_send + 1;
+                for (int i = 0; i < MAX_SEND_LEN + 1; i++)
+                    buf[i] = '\0';
+                for(int i = 0; i < x; i++)
+                    buf[i] = buffer[total_bytes_sent + i];
                 bytes_sent = send(sockfd, buf, x, 0);
                 if (bytes_sent < 0)
                 {
@@ -158,8 +159,6 @@ void *thread_S(void *arg)
                 }
                 bytes_to_send -= bytes_sent;
                 total_bytes_sent += bytes_sent;
-                for(int i=0; i<MAX_SEND_LEN; i++)
-                    buf[i] = '\0';
             }
             for (int i = 0; i < MAX_LEN; i++)
                 buffer[i] = '\0';
