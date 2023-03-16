@@ -87,10 +87,6 @@ void *thread_R(void *arg)
             pthread_exit(NULL);
         }
     }
-
-    // Socket closed, cleanup and exit the thread
-    close(sockfd);
-    pthread_exit(NULL);
 }
 
 void *thread_S(void *arg)
