@@ -54,7 +54,7 @@ void *thread_R(void *arg)
             // Interpret the received data as messages
             for (int i = 0; i < bytes_received; i++)
             {
-                printf("R: %c\n", buffer[i]);
+                //printf("R: %c\n", buffer[i]);
                 if (buffer[i] == '\0' || message_idx == MAX_LEN - 1 || bytes_received == 0)
                 {
                     // End of message reached
@@ -104,11 +104,14 @@ void *thread_S(void *arg)
     Message_Table *send_msgs = (Message_Table *)arg;
     int sockfd = send_msgs->sockfd;
     char buffer[MAX_LEN];
+    char buf[MAX_SEND_LEN];
     int bytes_to_send;
     int bytes_sent;
     printf("Thread S started!\n");
     for (int i = 0; i < MAX_LEN; i++)
         buffer[i] = '\0';
+    for (int i = 0; i < MAX_SEND_LEN; i++)
+        buf[i] = '\0';
 
     while (1)
     {
@@ -123,6 +126,7 @@ void *thread_S(void *arg)
             strcpy(buffer, send_msgs->msgs[send_msgs->front]);
             send_msgs->front = (send_msgs->front + 1) % NUM_MSGS;
             send_msgs->count--;
+            sockfd = send_msgs->sockfd;
             pthread_mutex_unlock(&send_msgs->mutex);
 
             // Send the message in chunks of at most MAX_SEND_LEN bytes
@@ -135,11 +139,11 @@ void *thread_S(void *arg)
                 int x = MAX_SEND_LEN;
                 if(bytes_to_send<MAX_SEND_LEN) x=bytes_to_send;
                 printf("x: %d\n", x);
-                char temp_buff[x];
-                strncpy(temp_buff, buffer + total_bytes_sent, x);
+                strncpy(buf, buffer + total_bytes_sent, x);
+                printf("buf: %s", buf);
                 //??????????????????
-                bytes_sent = send(sockfd, temp_buff, x, 0);
-                printf("bytes sent");
+                bytes_sent = send(sockfd, buf, x, 0);
+                printf("bytes sent: %d", bytes_sent);
                 if (bytes_sent < 0)
                 {
                     // Error occurred, exit the thread
@@ -160,7 +164,7 @@ void *thread_S(void *arg)
                 total_bytes_sent += bytes_sent;
             }
 
-        printf("Sent\n");
+            printf("Sent\n");
         }
         else
         {
@@ -261,6 +265,8 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags)
         sleep(5);
     }
 
+    send_msgs->sockfd = sockfd;
+
     // Add message to send_msgs
     strcpy(send_msgs->msgs[send_msgs->rear], buf);
     printf("send_msgs->msgs[send_msgs->rear] = %s\n", send_msgs->msgs[send_msgs->rear]);
@@ -273,17 +279,13 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags)
 ssize_t my_recv(int sockfd, void *buf, size_t len, int flags)
 {
     // Block if recv_msgs is empty
-    printf("recv_msgs->count = %d", recv_msgs->count);
     while (recv_msgs->count == 0)
     {
         sleep(5);
     }
 
-    printf("recv_msgs->count = %d", recv_msgs->count);
-
     // Remove message from recv_msgs
     strcpy(buf, recv_msgs->msgs[recv_msgs->front]);
-    printf("buf = %s\n", buf);
     recv_msgs->front = (recv_msgs->front + 1) % NUM_MSGS;
     recv_msgs->count--;
 
