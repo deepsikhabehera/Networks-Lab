@@ -1,6 +1,7 @@
 #include "mysocket.h"
 #include <pthread.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
@@ -27,10 +28,10 @@ Message_Table *recv_msgs = NULL;
 void *thread_R(void *arg)
 {
     Message_Table *recv_msgs = (Message_Table *)arg;
+    printf("Thread R started\n");
     int sockfd = recv_msgs->sockfd;
     char buffer[MAX_SEND_LEN];
     int bytes_received;
-    int message_len = 0;
     char message[MAX_LEN];
     int message_idx = 0;
     for (int i = 0; i < MAX_SEND_LEN; i++)
@@ -40,19 +41,20 @@ void *thread_R(void *arg)
 
     while (1)
     {
+        int message_len = 0;
         // Receive data from the socket
         while ((bytes_received = recv(sockfd, buffer, MAX_SEND_LEN, 0)) >= 0)
         {
             // Interpret the received data as messages
             for (int i = 0; i < bytes_received; i++)
             {
+                printf("R: %c\n", buffer[i]);
                 if (buffer[i] == '\0' || message_idx == MAX_LEN - 1 || bytes_received == 0)
                 {
                     // End of message reached
                     message[message_idx] = '\0';
                     message_len = message_idx;
                     message_idx = 0;
-
                     // Add the message to the Received_Message table
                     pthread_mutex_lock(&recv_msgs->mutex);
                     while (recv_msgs->count == NUM_MSGS)
@@ -71,6 +73,7 @@ void *thread_R(void *arg)
                         message[i] = '\0';
                     }
                     message_len = 0;
+                    break;
                 }
                 else
                 {
@@ -84,7 +87,8 @@ void *thread_R(void *arg)
         if (bytes_received < 0)
         {
             // Error occurred, exit the thread
-            pthread_exit(NULL);
+            // printf("here\n");
+            // pthread_exit(NULL);
         }
     }
 }
@@ -96,6 +100,7 @@ void *thread_S(void *arg)
     char buffer[MAX_LEN];
     int bytes_to_send;
     int bytes_sent;
+    printf("Thread S started!\n");
     for (int i = 0; i < MAX_LEN; i++)
         buffer[i] = '\0';
 
@@ -114,29 +119,42 @@ void *thread_S(void *arg)
             send_msgs->count--;
             pthread_mutex_unlock(&send_msgs->mutex);
 
-            // Send the message in chunks of at most 1000 bytes
+            // Send the message in chunks of at most MAX_SEND_LEN bytes
             int total_bytes_sent = 0;
             int send_rounds = 0;
             bytes_to_send = strlen(buffer);
+            printf("In thread S: %s, len: %d\n", buffer, bytes_to_send);
             while (bytes_to_send > 0)
             {
-                bytes_sent = send(sockfd, buffer + total_bytes_sent, min(bytes_to_send, 1000), 0);
+                int x = MAX_SEND_LEN;
+                if(bytes_to_send<MAX_SEND_LEN) x=bytes_to_send;
+                printf("x: %d\n", x);
+                char temp_buff[x];
+                strncpy(temp_buff, buffer + total_bytes_sent, x);
+                //??????????????????
+                bytes_sent = send(sockfd, temp_buff, x, 0);
+                printf("bytes sent");
                 if (bytes_sent < 0)
                 {
                     // Error occurred, exit the thread
+                    printf("hereeeeeee\n");
                     pthread_exit(NULL);
                 }
                 send_rounds++;
+                printf("S: round %d", send_rounds);
                 if (send_rounds == 5 || bytes_sent == 0 || buffer[total_bytes_sent + bytes_sent - 1] == '\0')
                 {
 
                     for (int i = 0; i < MAX_LEN; i++)
                         buffer[i] = '\0';
+                    printf("Sent: %d\n", send_rounds);
                     break;
                 }
                 bytes_to_send -= bytes_sent;
                 total_bytes_sent += bytes_sent;
             }
+
+        printf("Sent\n");
         }
         else
         {
@@ -156,7 +174,8 @@ int my_socket(int domain, int type, int protocol)
     sockfd = socket(domain, type, protocol);
     if (sockfd < 0)
     {
-        perror("Error: Socket creation failed.");
+        // perror("Error: Socket creation failed.");
+        return sockfd;
     }
 
     // Initialize send_msgs and recv_msgs
@@ -238,6 +257,7 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags)
 
     // Add message to send_msgs
     strcpy(send_msgs->msgs[send_msgs->rear], buf);
+    printf("send_msgs->msgs[send_msgs->rear] = %s\n", send_msgs->msgs[send_msgs->rear]);
     send_msgs->rear = (send_msgs->rear + 1) % NUM_MSGS;
     send_msgs->count++;
 
@@ -247,13 +267,17 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags)
 ssize_t my_recv(int sockfd, void *buf, size_t len, int flags)
 {
     // Block if recv_msgs is empty
+    printf("recv_msgs->count = %d", recv_msgs->count);
     while (recv_msgs->count == 0)
     {
         sleep(5);
     }
 
+    printf("recv_msgs->count = %d", recv_msgs->count);
+
     // Remove message from recv_msgs
     strcpy(buf, recv_msgs->msgs[recv_msgs->front]);
+    printf("buf = %s\n", buf);
     recv_msgs->front = (recv_msgs->front + 1) % NUM_MSGS;
     recv_msgs->count--;
 
