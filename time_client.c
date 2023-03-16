@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "mysocket.h"
-#define CONSTANTTT 12349
+#define CONSTANTTT 12318
 // CLIENT
 int main()
 {
@@ -39,7 +39,7 @@ int main()
 		buff[i] = '\0';
 	}
 	printf("Reading from socket...\n");
-	int x = recv(sockfd, buff, 100, 0);
+	int x = my_recv(sockfd, buff, 100, 0);
 	if (x < 0)
 	{
 		perror("Unable to read from socket\n");
