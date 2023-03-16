@@ -1,0 +1,30 @@
+Datastructures used in mysocket.h & mysocket.c:
+
+typedef struct
+{
+    int sockfd;
+    char msgs[NUM_MSGS][MAX_LEN];
+    int front, rear, count;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+} Message_Table;
+
+Message_Table struct has been designed to store the sent messages and recieved messages that will further be used by the my_send and my_recv call for the proper transfer of messges over this MyTCP socket.
+- The sockfd field maintains which socket is being used for the communication.
+- The msgs field is a 2D array that stores the messages that are to be sent or what is recieved.
+- The front, rear and count fields are used to maintain the queue of messages.
+- The mutex and cond fields are used to maintain the mutual exclusion and condition variables for the proper functioning of the queue.
+
+List of functions in mysocket.c:
+- void *thread_R(void *arg): This function is used to recieve the messages from the server and store them in the table in a separate thread. It receives the messages in chunks of size MAX_SEND_LEN, builds the original message up and then stores it in the recv_msgs table. It uses mutex locks as well as waits so that the table is not accessed by multiple threads at the same time.
+- void *thread_S(void *arg): This function is used to send the messages to the server and store them in the table in a separate thread. It reads the message from the send_msgs table, divides the messages in chunks of size MAX_SEND_LEN,  then sends it. It uses mutex locks as well as waits so that the table is not accessed by multiple threads at the same time.
+- int my_socket(int domain, int type, int protocol): This function is used to create a socket and return the socket descriptor. It uses the socket() system call to create a socket and returns the socket descriptor ONLY IF the type of the socket is SOCK_MyTCP. It also initialises the send_msgs and recv_msgs tables as well as create the threads for the recieve and send functions.
+- int my_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen): This function is just a wrapper function for using the bind() system call. It is used to bind the socket to a particular address and port.
+- int my_listen(int sockfd, int backlog): This function is just a wrapper function for using the listen() system call. It is used to listen for incoming connections on the socket.
+- int my_accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen): This function is just a wrapper function for using the accept() system call. It is used to accept an incoming connection on the socket.
+- int my_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen): This function is just a wrapper function for using the connect() system call. It is used to connect to a remote server.
+- int my_send(int sockfd, const void *buf, size_t len, int flags): This function is used to send the messages to the server. It first checks if the send_msgs table is full, if so it sleeps for T seconds. When it finds that the table isn't full, it reads the buffer into the table and moves the rear end pointer. It basically enters this message to the table.
+- int my_recv(int sockfd, void *buf, size_t len, int flags): This function is used to recieve the messages from the server. It first checks if the recv_msgs table is empty, if so it sleeps for T seconds. When it finds that the table isn't empty, it reads the message from the table and moves the front end pointer. It basically removes this message from the table.
+- int my_close(int sockfd): This function is used to close the socket. It first sleeps for T seconds to make sure the sending and receiving is done. It then checks first if the socket is initialised first or not. Then it terminates the R and S threads, clears up the send_msgs and recv_msgs table as well as destroy the mutexes and conds declared. It then closes the socket.
+
+//Describe what happens when a my_send and my_recv call is made

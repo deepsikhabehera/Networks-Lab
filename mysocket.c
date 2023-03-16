@@ -231,7 +231,7 @@ int my_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 
 int my_close(int sockfd)
 {
-    sleep(5);
+    sleep(T);
     if (send_msgs == NULL || recv_msgs == NULL)
     {
         perror("Error: Socket hasn't been initialized.");
@@ -259,7 +259,7 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags)
     // Block if send_msgs is full
     while (send_msgs->count == NUM_MSGS)
     {
-        sleep(5);
+        sleep(T);
     }
 
     send_msgs->sockfd = sockfd;
@@ -278,7 +278,7 @@ ssize_t my_recv(int sockfd, void *buf, size_t len, int flags)
     // Block if recv_msgs is empty
     while (recv_msgs->count == 0)
     {
-        sleep(5);
+        sleep(T);
     }
     // Remove message from recv_msgs
     strcpy(buf, recv_msgs->msgs[recv_msgs->front]);
