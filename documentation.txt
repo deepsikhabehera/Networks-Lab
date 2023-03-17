@@ -27,4 +27,19 @@ List of functions in mysocket.c:
 - int my_recv(int sockfd, void *buf, size_t len, int flags): This function is used to recieve the messages from the server. It first checks if the recv_msgs table is empty, if so it sleeps for T seconds. When it finds that the table isn't empty, it reads the message from the table and moves the front end pointer. It basically removes this message from the table.
 - int my_close(int sockfd): This function is used to close the socket. It first sleeps for T seconds to make sure the sending and receiving is done. It then checks first if the socket is initialised first or not. Then it terminates the R and S threads, clears up the send_msgs and recv_msgs table as well as destroy the mutexes and conds declared. It then closes the socket.
 
-//Describe what happens when a my_send and my_recv call is made
+my_send Call:
+- The call blocks using sleep() until there is a free entry in Send Messages table which is the send_msgs struct object here.
+- The sockfd in the Message_Table struct for send_msgs is updated.
+- The message is then copied to the rear end of the table, the count and rear end variables are updated.
+- In Thread_S after every T seconds sleep, it locks the send_msgs table and checks there is any message to send through count.
+- If count is greater than 0, the entry from the front end is copied to a buffer, the front and count variables are updated and then unlocked.
+- The message is broken down into parts of max length 1000 and sent in a loop using send() calls. A maximum of 5 calls are made.
+- If there were no messages to be sent in send_msgs then it is simply unlocked.
+
+my_recv Call:
+- The call using sleep() until there is a message to be read in the Recieve Messages table, i.e., recv_msgs struct object. The recv_msgs table is updated in thread_R.
+- The sockfd in the Message_Table struct for recv_msgs is updated.
+- The message is copied from the front of the table into the buf and front, count variables are updated.
+- In thread_R a loop runs. At the start the sockfd for recv_msgs is locked, updated then unlocked. Then it is blocked on a recv() call.
+- If bytes are received, they are copied/appended to the message. 
+- If the whole message has been received (max length 5000 or ends with /0) then the recv_msgs table is locked, message is written at the rear end, variables updated and unlocked.
