@@ -12,6 +12,7 @@
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <netinet/ip.h>
+#include <sys/poll.h>
 
 #define PACKET_SIZE 4096
 #define MAX_HOPS 16
@@ -173,6 +174,8 @@ int main(int argc, char *argv[])
     // While not done and hop count is less than max hops
     while (!done && hop_count <= MAX_HOPS)
     {
+        memset(&icmp_pkt->hdr, 0, sizeof(struct icmphdr));
+        
         printf("Hop Count : %d.\t\n\n", hop_count);
 
         // Create socket
@@ -200,7 +203,9 @@ int main(int argc, char *argv[])
         gettimeofday(&start, NULL);
         icmp_pkt->hdr.checksum = checksum(icmp_pkt, sizeof(struct icmphdr) + strlen(icmp_pkt->msg));
 
-        struct sockaddr_in from_addr;
+        struct sockaddr_in from_addr, intermediate_addr;
+        int intermediate_node_found = 0;
+        double min_rtt = -1;
 
         // Send at least 5 ICMP packets to discover intermediate nodes
         for (int i = 0; i < 5; i++)
@@ -217,6 +222,23 @@ int main(int argc, char *argv[])
 
             char buf[PACKET_SIZE];
             socklen_t from_len = sizeof(from_addr);
+
+            // Wait up to 5 seconds for a reply
+            struct pollfd fd;
+            fd.fd = sock;
+            fd.events = POLLIN;
+            int ret = poll(&fd, 1, 5000);
+            if (ret == -1)
+            {
+                perror("poll");
+                exit(1);
+            }
+            else if (ret == 0)
+            {
+                printf("Timeout waiting for reply\n");
+                continue;
+            }
+
             int received = recvfrom(sock, buf, PACKET_SIZE, 0, (struct sockaddr *)&from_addr, &from_len);
             if (received < 0)
             {
@@ -232,6 +254,17 @@ int main(int argc, char *argv[])
             double rtt = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
             printf("\n%.2f ms\t\n\n", rtt);
             sleep(1);
+
+            // Check if the intermediate node has been found
+            if (from_addr.sin_addr.s_addr != dest_addr.sin_addr.s_addr)
+            {
+                if (!intermediate_node_found || rtt < min_rtt)
+                {
+                    intermediate_node_found = 1;
+                    intermediate_addr = from_addr;
+                    min_rtt = rtt;
+                }
+            }
         }
 
         hop_count++;
@@ -243,6 +276,15 @@ int main(int argc, char *argv[])
         }
 
         close(sock);
+
+        if (intermediate_node_found)
+        {
+            printf("Intermediate node found: %s\n", inet_ntoa(intermediate_addr.sin_addr));
+        }
+        else
+        {
+            printf("Intermediate node not found\n");
+        }
 
         ttl++;
     }
