@@ -175,7 +175,7 @@ int main(int argc, char *argv[])
     while (!done && hop_count <= MAX_HOPS)
     {
         memset(&icmp_pkt->hdr, 0, sizeof(struct icmphdr));
-        
+
         printf("Hop Count : %d.\t\n\n", hop_count);
 
         // Create socket
