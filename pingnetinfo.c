@@ -1,3 +1,10 @@
+/*
+    Anushka Srivastava - 20CS10009
+    Deepsikha Behera - 20CS10023
+    Computer Networks - Assignment 6
+    Date: 09/04/2023
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +26,13 @@
 #define MAX_TRIES 3
 #define TIMEOUT_SEC 1
 #define TIMEOUT_USEC 0
+/*
+    Run the following commands:
+        gcc pingnetinfo.c -o ping
+        sudo ./ping addr n T
+    where addr is the address of the website, n is the number of hops and T is the timeout in seconds
+*/
+
 
 // ICMP packet structure
 struct icmp_packet
