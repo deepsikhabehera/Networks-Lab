@@ -437,7 +437,7 @@ int main(int argc, char *argv[])
                 temp_n--;
                 sleep(T);
             }
-            printf("Bandwidth of this intermediate link: %f\n", bandwidth);
+            printf("Bandwidth of <%s> - <%s> link: %f\n", prevIP, inet_ntoa(intermediate_addr.sin_addr), bandwidth);
             strcpy(prevIP, inet_ntoa(intermediate_addr.sin_addr));
         }
         else if (!done)
