@@ -122,7 +122,7 @@ void print_icmp_packet(struct icmp_packet *icmp_pkt)
 }
 
 // return the rtt
-double template_icmp_packet(char *msg, int ttl, int *seq, struct sockaddr_in intermediate_addr)
+double template_icmp_packet(char *msg, int ttl, int *seq, struct sockaddr_in intermediate_addr, int n, int T)
 {
     char packet[PACKET_SIZE];
     struct icmp_packet *icmp_pkt = (struct icmp_packet *)packet;
@@ -159,7 +159,7 @@ double template_icmp_packet(char *msg, int ttl, int *seq, struct sockaddr_in int
 
     struct sockaddr_in from_addr;
     int intermediate_node_found = 0;
-    double min_rtt = -1;
+    double max_rtt = -1;
 
     int sent = sendto(sock, icmp_pkt, sizeof(struct icmp_packet), 0, (struct sockaddr *)&intermediate_addr, sizeof(intermediate_addr));
     if (sent < 0)
@@ -185,7 +185,7 @@ double template_icmp_packet(char *msg, int ttl, int *seq, struct sockaddr_in int
         exit(1);
     }
 
-    // Wait up to 5 seconds for a reply
+    // Wait up to 3 seconds for a reply
     struct pollfd fd;
     fd.fd = sock;
     fd.events = POLLIN;
