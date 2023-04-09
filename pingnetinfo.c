@@ -122,7 +122,7 @@ void print_icmp_packet(struct icmp_packet *icmp_pkt)
 }
 
 // return the rtt
-double template_icmp_packet(char *msg, int ttl, int *seq, struct sockaddr_in intermediate_addr, int n, int T)
+double template_icmp_packet(char *msg, int ttl, int *seq, struct sockaddr_in intermediate_addr)
 {
     char packet[PACKET_SIZE];
     struct icmp_packet *icmp_pkt = (struct icmp_packet *)packet;
@@ -155,11 +155,10 @@ double template_icmp_packet(char *msg, int ttl, int *seq, struct sockaddr_in int
     icmp_pkt->hdr.un.echo.sequence = *seq;
     gettimeofday(&start, NULL);
     icmp_pkt->hdr.checksum = checksum(icmp_pkt, sizeof(struct icmphdr) + strlen(icmp_pkt->msg));
-    strcpy(icmp_pkt->msg, msg);
+    strncpy(icmp_pkt->msg, msg, PACKET_SIZE - sizeof(struct icmphdr));
 
     struct sockaddr_in from_addr;
     int intermediate_node_found = 0;
-    double max_rtt = -1;
 
     int sent = sendto(sock, icmp_pkt, sizeof(struct icmp_packet), 0, (struct sockaddr *)&intermediate_addr, sizeof(intermediate_addr));
     if (sent < 0)
@@ -394,13 +393,37 @@ int main(int argc, char *argv[])
             printf("Intermediate node found: %s\n", inet_ntoa(intermediate_addr.sin_addr));
 
             char *msg_emp = "";
-            double rtt_empty = template_icmp_packet(msg_emp, ttl, &seq, intermediate_addr);
+            double rtt_temp = -1, rtt_empty = -1;
+            int temp_n = n;
+            //max latency
+            while (temp_n)
+            {
+                rtt_temp = template_icmp_packet(msg_emp, ttl, &seq, intermediate_addr);
+                if(rtt_temp > rtt_empty){
+                    rtt_empty = rtt_temp;
+                }
+                temp_n--;
+                sleep(T);
+            }
             char *msg_smol = "hello";
-            double rtt_small = template_icmp_packet(msg_smol, ttl, &seq, intermediate_addr);
             char *msg_larg = "delilah let me be the one to light a fire inside your heart";
-            double rtt_large = template_icmp_packet(msg_larg, ttl, &seq, intermediate_addr);
+            double rtt_small = 0, rtt_large = 0, bandwidth = 0, band_temp = 0;
+            temp_n = n;
+
             printf("Latency for intermediate node <%s>: %f ms\n", inet_ntoa(intermediate_addr.sin_addr), rtt_empty);
-            double bandwidth = 1.0 * (strlen(msg_larg) - strlen(msg_smol)) / (rtt_large - rtt_small);
+            //bandwidth (max val)
+            while(temp_n){
+                rtt_small = template_icmp_packet(msg_smol, ttl, &seq, intermediate_addr);
+                rtt_large = template_icmp_packet(msg_larg, ttl, &seq, intermediate_addr);
+                band_temp = 1.0 * (strlen(msg_larg) - strlen(msg_smol)) / (rtt_large - rtt_small);
+                if(band_temp > bandwidth){
+                    bandwidth = band_temp;
+                }
+            printf("Bandwidth of this intermediate link: %f\n", band_temp);
+                temp_n--;
+                sleep(T);
+            }
+            printf("Latency for intermediate node <%s>: %f ms\n", inet_ntoa(intermediate_addr.sin_addr), rtt_empty);
             printf("Bandwidth of this intermediate link: %f\n", bandwidth);
         }
         else if (!done)
