@@ -423,7 +423,6 @@ int main(int argc, char *argv[])
                 temp_n--;
                 sleep(T);
             }
-            printf("Latency for intermediate node <%s>: %f ms\n", inet_ntoa(intermediate_addr.sin_addr), rtt_empty);
             printf("Bandwidth of this intermediate link: %f\n", bandwidth);
         }
         else if (!done)
