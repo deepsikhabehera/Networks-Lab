@@ -160,6 +160,9 @@ double template_icmp_packet(char *msg, int ttl, int *seq, struct sockaddr_in int
     struct sockaddr_in from_addr;
     int intermediate_node_found = 0;
 
+    printf("ICMP packet to be sent:\n");
+    print_icmp_packet(icmp_pkt);
+
     int sent = sendto(sock, icmp_pkt, sizeof(struct icmp_packet), 0, (struct sockaddr *)&intermediate_addr, sizeof(intermediate_addr));
     if (sent < 0)
     {
@@ -263,6 +266,14 @@ int main(int argc, char *argv[])
     {
         dest_addr.sin_addr.s_addr = inet_addr(target);
     }
+
+    char prevIP[256];
+    char hostbuffer[256];
+    int hostname = gethostname(hostbuffer, sizeof(hostbuffer));
+    struct hostent *host_entry = gethostbyname(hostbuffer);
+    char *IPaddr = inet_ntoa(*((struct in_addr *)host_entry->h_addr_list[0]));
+    strcpy(prevIP, IPaddr);
+    printf("%s\n", prevIP);
 
     printf("Tracing route to %s : %s\n\n", target, inet_ntoa(dest_addr.sin_addr));
 
@@ -395,11 +406,12 @@ int main(int argc, char *argv[])
             char *msg_emp = "";
             double rtt_temp = -1, rtt_empty = -1;
             int temp_n = n;
-            //max latency
+            // max latency
             while (temp_n)
             {
                 rtt_temp = template_icmp_packet(msg_emp, ttl, &seq, intermediate_addr);
-                if(rtt_temp > rtt_empty){
+                if (rtt_temp > rtt_empty)
+                {
                     rtt_empty = rtt_temp;
                 }
                 temp_n--;
@@ -410,20 +422,23 @@ int main(int argc, char *argv[])
             double rtt_small = 0, rtt_large = 0, bandwidth = 0, band_temp = 0;
             temp_n = n;
 
-            printf("Latency for intermediate node <%s>: %f ms\n", inet_ntoa(intermediate_addr.sin_addr), rtt_empty);
-            //bandwidth (max val)
-            while(temp_n){
+            printf("Latency for <%s> - <%s> link: %f ms\n", prevIP, inet_ntoa(intermediate_addr.sin_addr), rtt_empty);
+            // bandwidth (max val)
+            while (temp_n)
+            {
                 rtt_small = template_icmp_packet(msg_smol, ttl, &seq, intermediate_addr);
                 rtt_large = template_icmp_packet(msg_larg, ttl, &seq, intermediate_addr);
                 band_temp = 1.0 * (strlen(msg_larg) - strlen(msg_smol)) / (rtt_large - rtt_small);
-                if(band_temp > bandwidth){
+                if (band_temp > bandwidth)
+                {
                     bandwidth = band_temp;
                 }
-            printf("Bandwidth of this intermediate link: %f\n", band_temp);
+                printf("Bandwidth of <%s> - <%s> link: %f\n", prevIP, inet_ntoa(intermediate_addr.sin_addr), band_temp);
                 temp_n--;
                 sleep(T);
             }
             printf("Bandwidth of this intermediate link: %f\n", bandwidth);
+            strcpy(prevIP, inet_ntoa(intermediate_addr.sin_addr));
         }
         else if (!done)
         {
