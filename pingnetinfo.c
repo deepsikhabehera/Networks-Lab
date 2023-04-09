@@ -121,6 +121,102 @@ void print_icmp_packet(struct icmp_packet *icmp_pkt)
     printf("\n");
 }
 
+// return the rtt
+double template_icmp_packet(char *msg, int ttl, int *seq, struct sockaddr_in intermediate_addr)
+{
+    char packet[PACKET_SIZE];
+    struct icmp_packet *icmp_pkt = (struct icmp_packet *)packet;
+    memset(&icmp_pkt->hdr, 0, sizeof(struct icmphdr));
+
+    // Create socket
+    int sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+
+    if (sock < 0)
+    {
+        perror("socket");
+        exit(1);
+    }
+
+    // Set socket options for TTL
+    if (setsockopt(sock, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)) < 0)
+    {
+        perror("setsockopt");
+        exit(1);
+    }
+
+    struct timeval start, end, timeout;
+
+    // Create ICMP packet
+    bzero(&icmp_pkt->hdr, sizeof(struct icmphdr));
+    icmp_pkt->hdr.type = ICMP_ECHO;
+    icmp_pkt->hdr.code = 0;
+    icmp_pkt->hdr.un.echo.id = getpid();
+    *seq = *seq + 1;
+    icmp_pkt->hdr.un.echo.sequence = *seq;
+    gettimeofday(&start, NULL);
+    icmp_pkt->hdr.checksum = checksum(icmp_pkt, sizeof(struct icmphdr) + strlen(icmp_pkt->msg));
+    strcpy(icmp_pkt->msg, msg);
+
+    struct sockaddr_in from_addr;
+    int intermediate_node_found = 0;
+    double min_rtt = -1;
+
+    int sent = sendto(sock, icmp_pkt, sizeof(struct icmp_packet), 0, (struct sockaddr *)&intermediate_addr, sizeof(intermediate_addr));
+    if (sent < 0)
+    {
+        perror("sendto");
+        exit(1);
+    }
+
+    char buf[PACKET_SIZE];
+    socklen_t from_len = sizeof(from_addr);
+
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(sock, &readfds);
+
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+
+    if (select(sock + 1, &readfds, NULL, NULL, &tv) < 0)
+    {
+        perror("select");
+        exit(1);
+    }
+
+    // Wait up to 5 seconds for a reply
+    struct pollfd fd;
+    fd.fd = sock;
+    fd.events = POLLIN;
+    int ret = poll(&fd, 1, 3000);
+    if (ret == -1)
+    {
+        perror("poll");
+        exit(1);
+    }
+    else if (ret == 0)
+    {
+        printf("Timeout waiting for reply\n");
+        return -1;
+    }
+
+    int received = recvfrom(sock, buf, PACKET_SIZE, 0, (struct sockaddr *)&from_addr, &from_len);
+    if (received < 0)
+    {
+        perror("recvfrom");
+        exit(1);
+    }
+
+    printf("ICMP packet received:\n");
+    print_icmp_packet((struct icmp_packet *)buf);
+
+    gettimeofday(&end, NULL);
+    double rtt = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
+    sleep(1);
+    return rtt;
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 4)
@@ -233,7 +329,7 @@ int main(int argc, char *argv[])
             tv.tv_sec = 1;
             tv.tv_usec = 0;
 
-            if(select(sock+1, &readfds, NULL, NULL, &tv) < 0)
+            if (select(sock + 1, &readfds, NULL, NULL, &tv) < 0)
             {
                 perror("select");
                 exit(1);
@@ -296,6 +392,16 @@ int main(int argc, char *argv[])
         if (intermediate_node_found)
         {
             printf("Intermediate node found: %s\n", inet_ntoa(intermediate_addr.sin_addr));
+
+            char *msg_emp = "";
+            double rtt_empty = template_icmp_packet(msg_emp, ttl, &seq, intermediate_addr);
+            char *msg_smol = "hello";
+            double rtt_small = template_icmp_packet(msg_smol, ttl, &seq, intermediate_addr);
+            char *msg_larg = "delilah let me be the one to light a fire inside your heart";
+            double rtt_large = template_icmp_packet(msg_larg, ttl, &seq, intermediate_addr);
+            printf("Latency for intermediate node <%s>: %f ms\n", inet_ntoa(intermediate_addr.sin_addr), rtt_empty);
+            double bandwidth = 1.0 * (strlen(msg_larg) - strlen(msg_smol)) / (rtt_large - rtt_small);
+            printf("Bandwidth of this intermediate link: %f\n", bandwidth);
         }
         else if (!done)
         {
