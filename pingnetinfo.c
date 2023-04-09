@@ -207,8 +207,11 @@ int main(int argc, char *argv[])
         int intermediate_node_found = 0;
         double min_rtt = -1;
 
+        printf("ICMP packet to be sent:\n");
+        print_icmp_packet(icmp_pkt);
+
         // Send at least 5 ICMP packets to discover intermediate nodes
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 10; i++)
         {
             int sent = sendto(sock, icmp_pkt, sizeof(struct icmp_packet), 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
             if (sent < 0)
@@ -217,17 +220,30 @@ int main(int argc, char *argv[])
                 exit(1);
             }
 
-            printf("ICMP packet sent:\n");
-            print_icmp_packet(icmp_pkt);
+            printf("ICMP packet sent\n\n");
 
             char buf[PACKET_SIZE];
             socklen_t from_len = sizeof(from_addr);
+
+            fd_set readfds;
+            FD_ZERO(&readfds);
+            FD_SET(sock, &readfds);
+
+            struct timeval tv;
+            tv.tv_sec = 1;
+            tv.tv_usec = 0;
+
+            if(select(sock+1, &readfds, NULL, NULL, &tv) < 0)
+            {
+                perror("select");
+                exit(1);
+            }
 
             // Wait up to 5 seconds for a reply
             struct pollfd fd;
             fd.fd = sock;
             fd.events = POLLIN;
-            int ret = poll(&fd, 1, 5000);
+            int ret = poll(&fd, 1, 3000);
             if (ret == -1)
             {
                 perror("poll");
@@ -235,7 +251,7 @@ int main(int argc, char *argv[])
             }
             else if (ret == 0)
             {
-                printf("Timeout waiting for reply\n");
+                printf("Timeout waiting for reply\n\n");
                 continue;
             }
 
@@ -281,7 +297,7 @@ int main(int argc, char *argv[])
         {
             printf("Intermediate node found: %s\n", inet_ntoa(intermediate_addr.sin_addr));
         }
-        else
+        else if (!done)
         {
             printf("Intermediate node not found\n");
         }
